@@ -1,0 +1,386 @@
+import { GASApiService } from './gasApiService';
+import { User, UserRole, WorkOrder, ULP, Penyulang, ReguROW, Petugas } from '../types';
+import { formatDriveViewUrl, formatDriveImageUrl } from '../utils/driveUtils';
+import { getLocalDateTimeString, getWIBDateString } from '../utils/dateUtils';
+
+export function normalizeUser(u: any): User {
+  if (!u || typeof u !== 'object') {
+    return {
+      id: 'usr-' + Math.random().toString(36).substring(2, 7),
+      nip: 'usr-unknown',
+      name: 'Unknown User',
+      userName: 'user',
+      email: 'user@pln.co.id',
+      role: 'User'
+    };
+  }
+
+  const id = String(u.id || u.UserID || u.User_ID || u.ID || u.Username || u.username || u.NIP || u.nip || 'usr-' + Math.random().toString(36).substring(2, 7));
+  const nip = String(u.UserID || u.User_ID || u.nip || u.NIP || u.Username || u.username || u.id || id);
+  const userName = String(u.Username || u.username || u.userName || u.UserID || u.User_ID || u.nip || u.NIP || id).trim();
+  const name = String(u.name || u.Nama || u.Name || userName || nip || id).trim();
+  const password = String(u.Password || u.password || u.PASSWORD || u.pass || u.Pass || u.KataSandi || u.kataSandi || u.KATA_SANDI || '').trim();
+  const email = String(u.email || u.Email || `${userName.toLowerCase().replace(/[^a-z0-9]/g, '')}@pln.co.id`);
+  
+  const rawRole = String(u.Role || u.role || 'User').trim();
+  let role: UserRole = 'User';
+  if (/^super\s*admin$/i.test(rawRole) || /superadmin/i.test(rawRole) || /admin\s*utama/i.test(rawRole)) {
+    role = 'SuperAdmin';
+  } else if (/^adm$/i.test(rawRole) || rawRole.toLowerCase() === 'adm') {
+    role = 'Adm';
+  } else if (/admin/i.test(rawRole) || /admbkt/i.test(rawRole) || /manajer/i.test(rawRole) || /supervisor/i.test(rawRole)) {
+    role = 'Admin';
+  } else {
+    role = 'User';
+  }
+
+  const reguName = String(u.NamaRegu || u.Nama_Regu || u.reguName || u.NAMA_REGU || u.Regu_ROW || u.Regu || u.namaRegu || u.regu || u.ReguROW || u.Nama_Regu_ROW || u.Tim || u.Nama_Tim || u.Kelompok || '').trim();
+  const ulpName = String(u.ULP || u.ulpName || u.NAMA_ULP || u.Nama_ULP || u.namaULP || u.ulp || u.NamaULP || u.nama_ulp || '').trim();
+  const status = (u.Status === 'Non-Aktif' || u.status === 'Non-Aktif' || u.Status === 'Nonaktif' || u.status === 'Nonaktif') ? 'Non-Aktif' : 'Aktif';
+
+  return {
+    id,
+    nip,
+    name,
+    userName,
+    password,
+    email,
+    role,
+    reguName,
+    ulpName,
+    reguId: String(u.reguId || u.ReguID || ''),
+    ulpId: String(u.ulpId || u.ULPId || ''),
+    phone: String(u.phone || u.No_HP || u.Kontak || ''),
+    status,
+  };
+}
+
+export function normalizeULP(u: any): ULP {
+  return {
+    id: String(u.id || u.ID || 'ulp-' + Math.random().toString(36).substring(2, 7)),
+    kodeULP: String(u.kodeULP || u.Kode_ULP || u.Kode || ''),
+    namaULP: String(u.namaULP || u.Nama_ULP || u.ULP || u.Nama || ''),
+    manajer: String(u.manajer || u.Manajer || ''),
+    kontak: String(u.kontak || u.Kontak || ''),
+    alamat: String(u.alamat || u.Alamat || ''),
+    status: (u.status === 'Non-Aktif' || u.status === 'Nonaktif' || u.Status === 'Non-Aktif' ? 'Non-Aktif' : 'Aktif'),
+  };
+}
+
+export function normalizePenyulang(p: any): Penyulang {
+  const rawStatus = String(p.status || p.Status || 'Normal');
+  let status: 'Normal' | 'Rawan Hazard' | 'Maintenance' = 'Normal';
+  if (/hazard/i.test(rawStatus)) status = 'Rawan Hazard';
+  else if (/maintenance|maint/i.test(rawStatus)) status = 'Maintenance';
+
+  return {
+    id: String(p.id || p.ID || 'pyl-' + Math.random().toString(36).substring(2, 7)),
+    kodePenyulang: String(p.kodePenyulang || p.Kode_Penyulang || p.Kode || 'PYL-01'),
+    namaPenyulang: String(p.namaPenyulang || p.Nama_Penyulang || p.Penyulang || p.Nama || ''),
+    ulpId: String(p.ulpId || p.ULPId || ''),
+    ulpName: String(p.ulpName || p.ULP || p.Nama_ULP || ''),
+    panjangKms: Number(p.panjangKms || p.Panjang_Kms || 0),
+    jumlahTrafo: Number(p.jumlahTrafo || p.Jumlah_Trafo || 0),
+    status,
+  };
+}
+
+export function normalizeRegu(r: any): ReguROW {
+  return {
+    id: String(r.id || r.ID || 'rgu-' + Math.random().toString(36).substring(2, 7)),
+    kodeRegu: String(r.kodeRegu || r.Kode_Regu || r.Kode || ''),
+    namaRegu: String(r.namaRegu || r.Nama_Regu || r.Regu_ROW || r.Regu || ''),
+    penanggungJawab: String(r.penanggungJawab || r.PenanggungJawab || r.Kontak || ''),
+    ulpId: String(r.ulpId || r.ULPId || ''),
+    ulpName: String(r.ulpName || r.ULP || r.Nama_ULP || ''),
+    jumlahAnggota: Number(r.jumlahAnggota || r.Jumlah_Anggota || 0),
+    kontak: String(r.kontak || r.Kontak || ''),
+    status: (r.status === 'Non-Aktif' || r.status === 'Nonaktif' || r.Status === 'Non-Aktif' ? 'Non-Aktif' : 'Aktif'),
+  };
+}
+
+export function normalizePetugas(p: any): Petugas {
+  const rawRole = String(p.role || p.Role || 'User').trim();
+  let role: UserRole = 'User';
+  if (/^super\s*admin$/i.test(rawRole) || /superadmin/i.test(rawRole)) role = 'SuperAdmin';
+  else if (/^adm$/i.test(rawRole) || rawRole.toLowerCase() === 'adm') role = 'Adm';
+  else if (/admin/i.test(rawRole)) role = 'Admin';
+
+  return {
+    id: String(p.id || p.ID || 'ptg-' + Math.random().toString(36).substring(2, 7)),
+    nip: String(p.nip || p.NIP || p.id || p.ID || ''),
+    nama: String(p.nama || p.Nama || p.Petugas || p.namaPetugas || p.Nama_Petugas || p.NAMA_PETUGAS || p.nama_petugas || p.Nama_petugas || p.name || p.Name || p.petugas_name || p.Petugas_Name || p.Nama_Anggota || p.NamaAnggota || p.petugas_name || ''),
+    reguId: String(p.reguId || p.ReguID || ''),
+    reguName: String(p.reguName || p.Regu || p.Nama_Regu || p.NAMA_REGU || p.regu || p.NamaRegu || p.ReguROW || p.Nama_Regu_ROW || p.Tim || p.Nama_Tim || p.Tim_ROW || p.Kelompok || ''),
+    ulpId: String(p.ulpId || p.ULPId || ''),
+    ulpName: String(p.ulpName || p.ULP || p.Nama_ULP || p.NAMA_ULP || p.ulp || p.NamaULP || p.namaULP || p.nama_ulp || ''),
+    noHp: String(p.noHp || p.nomorHP || p.Nomor_HP || p.Kontak || ''),
+    role,
+    status: (p.status === 'Non-Aktif' || p.status === 'Nonaktif' || p.Status === 'Non-Aktif' ? 'Non-Aktif' : 'Aktif'),
+  };
+}
+
+export function normalizeWorkOrder(w: any): WorkOrder {
+  const rawSatuan = String(w.satuan || w.SATUAN || 'KMS').toUpperCase();
+  const satuan: 'KMS' | 'GAWANG' = rawSatuan === 'GAWANG' ? 'GAWANG' : 'KMS';
+
+  return {
+    id: String(w.id || w.WO_ID || w.ID || 'wo-' + Math.random().toString(36).substring(2, 7)),
+    pekerjaan: (w.pekerjaan || w.PEKERJAAN || 'NORMAL') as 'NORMAL' | 'GOROW',
+    nomorWO: String(w.nomorWO || w.NOMOR_WO || w.Nomor_WO || w.WO_Number || w.id || w.WO_ID || ''),
+    tanggal: String(w.tanggal || w.TANGGAL || w.Tanggal || getWIBDateString()),
+    ulpId: String(w.ulpId || w.ULPId || w.ULP_ID || ''),
+    ulpName: String(w.ulpName || w.NAMA_ULP || w.Nama_ULP || w.ULP || ''),
+    penyulangId: String(w.penyulangId || w.PenyulangId || ''),
+    penyulangName: String(w.penyulangName || w.NAMA_PENYULANG || w.Nama_Penyulang || w.Penyulang || ''),
+    reguId: String(w.reguId || w.ReguId || w.REGU_ID || ''),
+    reguName: String(w.reguName || w.NAMA_REGU || w.Nama_Regu || w.Regu_ROW || w.Regu || ''),
+    volumePekerjaan: Number(w.volumePekerjaan || w.VOLUME || w.Volume || w.volume || 0),
+    satuan,
+    totalRealisasi: Number(w.totalRealisasi || w.TOTAL_REALISASI || w.Total_Realisasi || w.total_realisasi || 0),
+    satuanTotalRealisasi: (w.satuanTotalRealisasi || w.SATUAN_TOTAL_REALISASI || w.Satuan_Total_Realisasi || w.satuan_total_realisasi || 'KMS') as 'KMS' | 'GAWANG',
+    woMulai: String(w.woMulai || w.WO_MULAI || w.Wo_Mulai || w.WoMulai || ''),
+    woAkhir: String(w.woAkhir || w.WO_AKHIR || w.Wo_Akhir || w.WoAkhir || ''),
+    status: (w.status || w.STATUS || 'Belum Dikerjakan'),
+    deskripsi: String(w.deskripsi || w.DESKRIPSI || w.Deskripsi || ''),
+    jenisPekerjaan: w.jenisPekerjaan || w.JENIS_PEKERJAAN || w.Jenis_Pekerjaan || w.Kategori || 'Pemangkasan Pohon (ROW)',
+    prioritas: w.prioritas || w.PRIORITAS || w.Prioritas || 'Sedang',
+    lokasi: String(w.lokasi || w.LOKASI || w.Lokasi || ''),
+    petugasName: String(w.petugasName || w.PETUGAS || w.Petugas || w.NAMA_PETUGAS || ''),
+    progressPercent: Number(w.progressPercent || w.PROGRESS || w.progress || w.Progress || 0),
+    createdAt: String(w.createdAt || w.Created_At || getLocalDateTimeString()),
+  };
+}
+
+export function normalizeAbsensi(a: any): any {
+  if (!a || typeof a !== 'object') {
+    return {
+      id: 'abs-' + Math.random().toString(36).substring(2, 7),
+      tanggal: getWIBDateString(),
+      reguName: '',
+      ulpName: '',
+      petugasList: [],
+      createdAt: getLocalDateTimeString(),
+    };
+  }
+
+  let petugasList: any[] = Array.isArray(a.petugasList) ? a.petugasList : [];
+  if (petugasList.length === 0) {
+    for (let i = 1; i <= 20; i++) {
+      const pVal = a[`PETUGAS_${i}`] || a[`Petugas_${i}`] || a[`petugas_${i}`];
+      const kVal = a[`KET_${i}`] || a[`Ket_${i}`] || a[`ket_${i}`] || 'HADIR';
+      if (pVal && pVal !== '-') {
+        petugasList.push({
+          nama: String(pVal).replace(/\s*\([^)]*\)/g, '').trim(),
+          keterangan: String(kVal || 'HADIR').trim().toUpperCase(),
+        });
+      }
+    }
+  }
+
+  return {
+    ...a,
+    id: String(a.id || a.ID || a.ABS_ID || 'abs-' + Math.random().toString(36).substring(2, 7)),
+    tanggal: String(a.tanggal || a.TANGGAL || a.Tanggal || getWIBDateString()),
+    reguName: String(a.reguName || a.NAMA_REGU || a.Nama_Regu || a.Regu || ''),
+    ulpName: String(a.ulpName || a.NAMA_ULP || a.Nama_ULP || a.ULP || ''),
+    userName: String(a.userName || a.USER_NAME || a.Username || a.username || ''),
+    namaPetugas: String(a.namaPetugas || a.NAMA_PETUGAS || a.Nama_Petugas || a.Petugas || ''),
+    nip: String(a.nip || a.NIP || ''),
+    petugasList,
+    fotoMasuk: formatDriveViewUrl(String(a.fotoMasuk || a.FOTO_MASUK || a.FotoMasuk || '')),
+    timestampMasuk: String(a.timestampMasuk || a['TIMESTAMP MASUK'] || a.TIMESTAMP_MASUK || a.TIMESTAMP || ''),
+    fotoKeluar: formatDriveViewUrl(String(a.fotoKeluar || a.FOTO_KELUAR || a.FotoKeluar || '')),
+    timestampKeluar: String(a.timestampKeluar || a['TIMESTAMP KELUAR'] || a.TIMESTAMP_KELUAR || ''),
+    latitude: Number(a.latitude || a.Latitude || a.LATITUDE || a.lat || 0),
+    longitude: Number(a.longitude || a.Longitude || a.LONGITUDE || a.lon || 0),
+    createdAt: String(a.createdAt || a.CREATED_AT || a.Created_At || getLocalDateTimeString()),
+  };
+}
+
+export function normalizeRealisasi(r: any): any {
+  if (!r || typeof r !== 'object') return r;
+
+  const latLngStr = String(r.Latitude_Longitude || r.latitudeLongitude || r.LATITUDE_LONGITUDE || '');
+  let lat = Number(r.latitude || 0);
+  let lng = Number(r.longitude || 0);
+  if (latLngStr.includes(',')) {
+    const parts = latLngStr.split(',');
+    lat = Number(parts[0].trim()) || lat;
+    lng = Number(parts[1].trim()) || lng;
+  }
+
+  const rawFotoSebelum = String(r.Foto_Sebelum || r.fotoSebelumUrl || r.fotoSebelum || r.FOTO_SEBELUM || '');
+  const rawFotoSesudah = String(r.Foto_Sesudah || r.fotoSesudahUrl || r.fotoSesudah || r.FOTO_SESUDAH || '');
+  const fotoSebelumUrl = formatDriveViewUrl(rawFotoSebelum);
+  const fotoSesudahUrl = formatDriveViewUrl(rawFotoSesudah);
+  const fotoSebelumImg = formatDriveImageUrl(rawFotoSebelum);
+  const fotoSesudahImg = formatDriveImageUrl(rawFotoSesudah);
+
+  return {
+    id: String(r.id || r.ID || r.Id || 'rel-' + Math.random().toString(36).substring(2, 7)),
+    workOrderId: String(r.WO_ID || r.workOrderId || r.woId || ''),
+    nomorWO: String(r.Nomor_WO || r.nomorWO || r.NO_WO || ''),
+    ulpName: String(r.ULP || r.ulpName || ''),
+    reguName: String(r.REGU_ROW || r.reguName || r.REGU || ''),
+    penyulangName: String(r.PENYULANG || r.penyulangName || ''),
+    noTiang: String(r.NO_TIANG || r.noTiang || ''),
+    tanggalRealisasi: String(r.TANGGAL || r.tanggalRealisasi || getWIBDateString()),
+    petugasId: String(r.petugasId || 'usr-3'),
+    petugasName: String(r.Petugas || r.petugasName || r.REGU_ROW || ''),
+    jenisTanaman: String(r.Jenis_Tanaman || r.jenisTanaman || ''),
+    pertumbuhanTanaman: String(r.Pertumbuhan_Tanaman || r.pertumbuhanTanaman || ''),
+    kendala: String(r.Kendala || r.kendala || ''),
+    lokasiKerja: String(r.Lokasi_kerja || r.lokasiKerja || r.LOKASI_KERJA || ''),
+    latitude: lat,
+    longitude: lng,
+    keterangan: String(r.Keterangan || r.keterangan || ''),
+    progressPercent: 100,
+    status: 'Selesai',
+    fotoSebelumUrl,
+    fotoSesudahUrl,
+    photosSebelum: fotoSebelumUrl ? [{
+      id: 'pic-seb-1',
+      type: 'sebelum',
+      slotIndex: 1,
+      dataUrl: fotoSebelumImg,
+      fileUrl: fotoSebelumUrl,
+      originalName: 'Foto_Sebelum.jpg',
+      timestamp: String(r.Timestamp || r.TANGGAL || ''),
+      latitude: lat,
+      longitude: lng,
+      userName: String(r.Petugas || r.REGU_ROW || ''),
+      ulpName: String(r.ULP || '')
+    }] : [],
+    photosSesudah: fotoSesudahUrl ? [{
+      id: 'pic-ses-1',
+      type: 'sesudah',
+      slotIndex: 1,
+      dataUrl: fotoSesudahImg,
+      fileUrl: fotoSesudahUrl,
+      originalName: 'Foto_Sesudah.jpg',
+      timestamp: String(r.Timestamp || r.TANGGAL || ''),
+      latitude: lat,
+      longitude: lng,
+      userName: String(r.Petugas || r.REGU_ROW || ''),
+      ulpName: String(r.ULP || '')
+    }] : [],
+    timestamp: String(r.Timestamp || r.timestamp || r.createdAt || ''),
+    createdAt: String(r.Timestamp || r.createdAt || getLocalDateTimeString()),
+  };
+}
+
+export class SyncService {
+  static async withRetry<T>(fn: () => Promise<T>, retries = 1, delay = 300): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      if (retries <= 0) throw error;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return this.withRetry(fn, retries - 1, delay);
+    }
+  }
+
+  static async fetchAllData(gasUrl: string, spreadsheetId?: string) {
+    try {
+      // Try bulk fetch with minimal retry delay
+      const response = await this.withRetry(() => GASApiService.fetchAllData(gasUrl, spreadsheetId), 1, 300);
+      
+      if (response.status === 'success' && response.data) {
+        const d = response.data;
+        const usersList = Array.isArray(d.USERS || d.Users || d.users) ? (d.USERS || d.Users || d.users).map(normalizeUser) : [];
+        const ulpList = Array.isArray(d.ULP || d.Ulp || d.ulp) ? (d.ULP || d.Ulp || d.ulp).map(normalizeULP) : [];
+        const penyulangList = Array.isArray(d.PENYULANG || d.Penyulang || d.penyulang) ? (d.PENYULANG || d.Penyulang || d.penyulang).map(normalizePenyulang) : [];
+        const reguList = Array.isArray(d.REGU_ROW || d.Regu_ROW || d.ReguROW || d.Regu || d.regu) ? (d.REGU_ROW || d.Regu_ROW || d.ReguROW || d.Regu || d.regu).map(normalizeRegu) : [];
+        const petugasList = Array.isArray(d.PETUGAS || d.Petugas || d.petugas || d.Data_Petugas || d.DATA_PETUGAS) ? (d.PETUGAS || d.Petugas || d.petugas || d.Data_Petugas || d.DATA_PETUGAS).map(normalizePetugas) : [];
+        const workOrdersList = Array.isArray(d.WORK_ORDER || d.Work_Order || d.WorkOrder || d.WO || d.wo) 
+          ? (d.WORK_ORDER || d.Work_Order || d.WorkOrder || d.WO || d.wo)
+            .map(normalizeWorkOrder)
+            .filter(wo => wo.nomorWO || wo.ulpName || wo.reguName || wo.penyulangName)
+          : [];
+        const realisasiList = Array.isArray(d.REALISASI || d.Realisasi || d.realisasi) 
+          ? (d.REALISASI || d.Realisasi || d.realisasi)
+            .map(normalizeRealisasi)
+            .filter(rel => rel.workOrderId || rel.nomorWO)
+          : [];
+
+        const result = {
+          masterData: {
+            users: usersList,
+            ulp: ulpList,
+            penyulang: penyulangList,
+            regu: reguList,
+            petugas: petugasList
+          },
+          workOrders: workOrdersList,
+          realisasi: realisasiList,
+          absensi: Array.isArray(d.ABSENSI || d.Absensi || d.absensi) 
+            ? (d.ABSENSI || d.Absensi || d.absensi)
+              .map(normalizeAbsensi)
+              .filter(abs => abs.reguName || abs.ulpName)
+            : [],
+          errors: []
+        };
+
+        // Cache in localStorage for instant future loads (Excluding Work Orders)
+        try {
+          const cacheResult = { ...result, workOrders: [] };
+          localStorage.setItem('aphro_cached_synced_data', JSON.stringify(cacheResult));
+        } catch (e) {
+          // ignore quote quota errors
+        }
+
+        return result;
+      }
+      throw new Error(response.message || 'Bulk fetch failed');
+    } catch {
+      // Fallback to individual parallel fetches if bulk fetch fails
+      const results = await Promise.allSettled([
+        this.withRetry(() => GASApiService.fetchUsers(gasUrl, spreadsheetId), 1, 200),
+        this.withRetry(() => GASApiService.fetchWorkOrders(gasUrl, spreadsheetId), 1, 200),
+        this.withRetry(() => GASApiService.fetchRealisasi(gasUrl, spreadsheetId), 1, 200),
+        this.withRetry(() => GASApiService.fetchAbsensi(gasUrl, spreadsheetId), 1, 200),
+        this.withRetry(() => GASApiService.fetchMasterData(gasUrl, 'getULP', spreadsheetId), 1, 200),
+        this.withRetry(() => GASApiService.fetchMasterData(gasUrl, 'getPenyulang', spreadsheetId), 1, 200),
+        this.withRetry(() => GASApiService.fetchMasterData(gasUrl, 'getRegu', spreadsheetId), 1, 200),
+        this.withRetry(() => GASApiService.fetchMasterData(gasUrl, 'getPetugas', spreadsheetId), 1, 200),
+      ]);
+
+      const errors = results.filter(r => r.status === 'rejected');
+
+      const rawUsers = results[0].status === 'fulfilled' && Array.isArray(results[0].value.data) ? results[0].value.data : [];
+      const rawWo = results[1].status === 'fulfilled' && Array.isArray(results[1].value.data) ? results[1].value.data : [];
+      const rawRel = results[2].status === 'fulfilled' && Array.isArray(results[2].value.data) ? results[2].value.data : [];
+      const rawUlp = results[4].status === 'fulfilled' && Array.isArray(results[4].value.data) ? results[4].value.data : [];
+      const rawPyl = results[5].status === 'fulfilled' && Array.isArray(results[5].value.data) ? results[5].value.data : [];
+      const rawRegu = results[6].status === 'fulfilled' && Array.isArray(results[6].value.data) ? results[6].value.data : [];
+      const rawPtg = results[7].status === 'fulfilled' && Array.isArray(results[7].value.data) ? results[7].value.data : [];
+
+      const result = {
+        masterData: {
+          users: rawUsers.map(normalizeUser),
+          ulp: rawUlp.map(normalizeULP),
+          penyulang: rawPyl.map(normalizePenyulang),
+          regu: rawRegu.map(normalizeRegu),
+          petugas: rawPtg.map(normalizePetugas),
+        },
+        workOrders: rawWo.map(normalizeWorkOrder).filter(wo => wo.nomorWO || wo.ulpName || wo.reguName || wo.penyulangName),
+        realisasi: rawRel.map(normalizeRealisasi).filter(rel => rel.workOrderId || rel.nomorWO),
+        absensi: results[3].status === 'fulfilled' && Array.isArray(results[3].value.data) 
+          ? results[3].value.data.map(normalizeAbsensi).filter(abs => abs.reguName || abs.ulpName) 
+          : [],
+        errors: errors
+      };
+
+      try {
+        const cacheResult = { ...result, workOrders: [] };
+        localStorage.setItem('aphro_cached_synced_data', JSON.stringify(cacheResult));
+      } catch (e) {
+        // ignore
+      }
+
+      return result;
+    }
+  }
+}
+

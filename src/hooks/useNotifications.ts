@@ -1,0 +1,61 @@
+import { useEffect } from 'react';
+import { db, requestForToken, onMessageListener } from '../config/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from './useToast';
+import { useNotifications as useNotificationContext } from '../context/NotificationContext';
+import { getLocalDateTimeString } from '../utils/dateUtils';
+
+export const useNotifications = () => {
+  const { user: currentUser } = useAuth();
+  const { showToast } = useToast();
+  const { addNotification } = useNotificationContext();
+
+  useEffect(() => {
+    if (currentUser) {
+      const setupNotifications = async () => {
+        try {
+          const token = await requestForToken();
+          if (token) {
+            const tokenRef = doc(db, 'fcm_tokens', token);
+            await setDoc(tokenRef, {
+              token,
+              userId: currentUser.id,
+              reguName: currentUser.reguName || null,
+              updatedAt: getLocalDateTimeString()
+            }, { merge: true });
+          }
+        } catch {
+          // Graceful handling if FCM token storage fails in local/preview mode
+        }
+      };
+
+      setupNotifications();
+      
+      // Listen for foreground messages
+      const unsubscribe = onMessageListener((payload) => {
+        if (payload && payload.notification) {
+          const title = payload.notification.title || 'Pemberitahuan Baru';
+          const body = payload.notification.body || '';
+          
+          showToast(title + ': ' + body, 'info');
+
+          // Add to local notification bell list
+          addNotification({
+            title,
+            message: body,
+            type: 'info',
+            reguTarget: currentUser.reguName,
+            ulpTarget: currentUser.ulpName
+          });
+        }
+      });
+
+      return () => {
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      };
+    }
+  }, [currentUser, showToast, addNotification]);
+};

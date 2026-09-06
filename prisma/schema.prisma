@@ -1,0 +1,213 @@
+// Prisma Schema for APHRO System - PostgreSQL Database
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model UnitLayanan {
+  id                  String      @id @default(cuid())
+  kodeUL              String      @unique
+  namaUL              String
+  idSpreadsheet       String?
+  urlGas              String?
+  folderIdSpreadsheet String?
+  folderIdFoto        String?
+  folderIdAbsensi     String?
+  notes               String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  workOrders          WorkOrder[]
+  realisasiList       Realisasi[]
+  absensiList         Absensi[]
+  users               User[]
+  ulps                MasterULP[]
+  penyulangs          MasterPenyulang[]
+  regus               MasterRegu[]
+  petugasList         MasterPetugas[]
+  tiangList           MasterTiang[]
+  activityLogs        ActivityLog[]
+}
+
+model WorkOrder {
+  id                    String       @id @default(cuid())
+  unitId                String
+  unit                  UnitLayanan  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  nomorWO               String
+  tanggal               String
+  ulpName               String
+  penyulangName         String
+  volumePekerjaan       String
+  satuan                String
+  reguName              String
+  petugasName           String?
+  jenisPekerjaan        String?
+  status                String       @default("BELUM SELESAI")
+  deadline              String?
+  woMulai               String?
+  woAkhir               String?
+  totalRealisasi        String?      @default("0.00")
+  satuanTotalRealisasi  String?
+  lokasiStart           String?
+  lokasiFinish          String?
+  createdAt             String
+  updatedAt             DateTime     @updatedAt
+
+  realisasiList         Realisasi[]
+
+  @@index([unitId])
+  @@index([nomorWO])
+  @@index([reguName])
+}
+
+model Realisasi {
+  id                String       @id @default(cuid())
+  unitId            String
+  unit              UnitLayanan  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  workOrderId       String?
+  workOrder         WorkOrder?   @relation(fields: [workOrderId], references: [id], onDelete: Set Null)
+  nomorWO           String
+  reguName          String
+  tanggalRealisasi  String
+  jamMulai          String?
+  jamSelesai        String?
+  volume            String       @default("0.00")
+  satuan            String
+  lokasiKerja       String?
+  fotoAwalUrl       String?
+  fotoProsesUrl     String?
+  fotoAkhirUrl      String?
+  fotoTambahanUrl   String?
+  latitude          String?
+  longitude         String?
+  pangkasTrees      String?      @default("0")
+  tebangTrees       String?      @default("0")
+  tglMulai          String?
+  tglSelesai        String?
+  statusApproval    String?      @default("PENDING")
+  dikirimOleh       String?
+  createdAt         String
+  updatedAt         DateTime     @updatedAt
+
+  @@index([unitId])
+  @@index([nomorWO])
+  @@index([workOrderId])
+}
+
+model Absensi {
+  id               String       @id @default(cuid())
+  unitId           String
+  unit             UnitLayanan  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  reguName         String
+  ulpName          String?
+  tanggal          String
+  jamMasuk         String?
+  jamKeluar        String?
+  fotoAbsensiUrl   String?
+  jumlahPersonel   Int?         @default(0)
+  daftarPersonel   String?
+  status           String?      @default("HADIR")
+  createdAt        String
+  updatedAt        DateTime     @updatedAt
+
+  @@index([unitId])
+  @@index([tanggal])
+  @@index([reguName])
+}
+
+model User {
+  id         String       @id @default(cuid())
+  unitId     String?
+  unit       UnitLayanan? @relation(fields: [unitId], references: [id], onDelete: Set Null)
+  nip        String       @unique
+  name       String
+  username   String       @unique
+  password   String
+  role       String       @default("User")
+  reguName   String?
+  ulpName    String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([unitId])
+  @@index([username])
+}
+
+model MasterULP {
+  id        String       @id @default(cuid())
+  unitId    String
+  unit      UnitLayanan  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  kodeULP   String
+  namaULP   String
+  createdAt DateTime     @default(now())
+
+  @@index([unitId])
+}
+
+model MasterPenyulang {
+  id               String       @id @default(cuid())
+  unitId           String
+  unit             UnitLayanan  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  ulpName          String
+  namaPenyulang    String
+  panjangPenyulang String?
+  createdAt        DateTime     @default(now())
+
+  @@index([unitId])
+}
+
+model MasterRegu {
+  id        String       @id @default(cuid())
+  unitId    String
+  unit      UnitLayanan  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  ulpName   String
+  namaRegu  String
+  ketuaRegu String?
+  createdAt DateTime     @default(now())
+
+  @@index([unitId])
+}
+
+model MasterPetugas {
+  id          String       @id @default(cuid())
+  unitId      String
+  unit        UnitLayanan  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  reguName    String
+  namaPetugas String
+  jabatan     String?
+  createdAt   DateTime     @default(now())
+
+  @@index([unitId])
+}
+
+model MasterTiang {
+  id            String       @id @default(cuid())
+  unitId        String
+  unit          UnitLayanan  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  penyulangName String
+  nomorTiang    String
+  jenisTiang    String?
+  koordinat     String?
+  createdAt     DateTime     @default(now())
+
+  @@index([unitId])
+  @@index([nomorTiang])
+}
+
+model ActivityLog {
+  id        String       @id @default(cuid())
+  unitId    String?
+  unit      UnitLayanan? @relation(fields: [unitId], references: [id], onDelete: Set Null)
+  user      String
+  aktivitas String
+  modul     String
+  timestamp String
+  createdAt DateTime     @default(now())
+
+  @@index([unitId])
+}

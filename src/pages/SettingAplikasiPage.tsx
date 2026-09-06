@@ -1,0 +1,734 @@
+import React, { useState } from 'react';
+import { useSettings } from '../context/SettingsContext';
+import { useNotifications } from '../context/NotificationContext';
+import { useGASSync } from '../hooks/useGASSync';
+import { useToast } from '../hooks/useToast';
+import { useMasterData } from '../context/MasterDataContext';
+import { useWorkOrders } from '../context/WorkOrderContext';
+import { useRealisasi } from '../context/RealisasiContext';
+import { useAbsensi } from '../context/AbsensiContext';
+import { useAuth } from '../context/AuthContext';
+import { GAS_BACKEND_CODE } from '../utils/gasBackendCode';
+import { GASApiService } from '../services/gasApiService';
+import { AutoSpreadsheetWizardModal } from '../components/common/AutoSpreadsheetWizardModal';
+import { PostgresMigrationModal } from '../components/common/PostgresMigrationModal';
+import { saveAndEmbedGasConfig } from '../config/gasConfig';
+import {
+  Settings,
+  Save,
+  Building,
+  Image as ImageIcon,
+  Phone,
+  History,
+  Database,
+  Link,
+  Copy,
+  Check,
+  ExternalLink,
+  CheckCircle2,
+  AlertCircle,
+  Folder,
+  FileSpreadsheet,
+  RefreshCw,
+  Code2,
+  Sparkles,
+} from 'lucide-react';
+
+export const SettingAplikasiPage: React.FC = () => {
+  const { settings, updateSettings } = useSettings();
+  const { auditLogs, notifications } = useNotifications();
+  const { isGasConnected, syncWithGAS, pendingCount, processPendingQueue, isSyncing } = useGASSync();
+  const { showToast } = useToast();
+  const { users, ulpList, penyulangList, reguList, petugasList } = useMasterData();
+  const { workOrders } = useWorkOrders();
+  const { realisasiList } = useRealisasi();
+  const { absensiList } = useAbsensi();
+
+  const handleManualSyncAll = async () => {
+    try {
+      showToast('Memulai sinkronisasi data manual...', 'info');
+      if (pendingCount > 0) {
+        await processPendingQueue(showToast);
+      }
+      await syncWithGAS(showToast);
+      showToast('Sinkronisasi Berhasil Selesai!', 'success');
+    } catch {
+      showToast('Gagal melakukan sinkronisasi dengan Google Spreadsheet', 'error');
+    }
+  };
+
+  const [namaUnitLayanan, setNamaUnitLayanan] = useState(settings.namaUnitLayanan);
+  const [logoAplikasiUrl, setLogoAplikasiUrl] = useState(settings.logoAplikasiUrl);
+  const [logoInstansiUrl, setLogoInstansiUrl] = useState(settings.logoInstansiUrl);
+  const [loginBgUrl, setLoginBgUrl] = useState(settings.loginBgUrl);
+  const [themeColor, setThemeColor] = useState(settings.themeColor);
+  const [versiAplikasi, setVersiAplikasi] = useState(settings.versiAplikasi);
+  const [gasWebAppUrl, setGasWebAppUrl] = useState(settings.gasWebAppUrl || '');
+
+  const [whatsapp, setWhatsapp] = useState(settings.kontakAdmin.whatsapp);
+  const [email, setEmail] = useState(settings.kontakAdmin.email);
+  const [alamat, setAlamat] = useState(settings.kontakAdmin.alamat);
+
+  const [isTestingGas, setIsTestingGas] = useState(false);
+  const [isCopiedGasCode, setIsCopiedGasCode] = useState(false);
+  const [showGasScriptModal, setShowGasScriptModal] = useState(false);
+  const [showAutoWizard, setShowAutoWizard] = useState(false);
+  const [showPostgresModal, setShowPostgresModal] = useState(false);
+
+  const handleTestGas = async () => {
+    if (!gasWebAppUrl) {
+      showToast('Masukkan URL Web App Google Apps Script terlebih dahulu!', 'warning');
+      return;
+    }
+    setIsTestingGas(true);
+    showToast('Menghubungi server Google Apps Script...', 'info');
+
+    try {
+      const isOk = await GASApiService.testConnection(gasWebAppUrl);
+      if (isOk) {
+        showToast('Koneksi ke Google Apps Script REST API Berhasil!', 'success');
+        syncWithGAS();
+      } else {
+        showToast('Gagal terhubung ke Google Apps Script URL. Pastikan akses diset ke "Anyone" (Siapa Saja).', 'error');
+      }
+    } catch (err: any) {
+      showToast(`Error koneksi GAS: ${err.message}`, 'error');
+    } finally {
+      setIsTestingGas(false);
+    }
+  };
+
+  const handleInitDatabaseGAS = async () => {
+    if (!gasWebAppUrl) {
+      showToast('Masukkan URL Web App GAS terlebih dahulu', 'warning');
+      return;
+    }
+    setIsTestingGas(true);
+    showToast('Menginisialisasi Spreadsheet APHRO & 11 Sheet Otomatis...', 'info');
+
+    try {
+      const res = await GASApiService.initDatabase(gasWebAppUrl);
+      if (res.status === 'success') {
+        showToast(`Spreadsheet Database Berhasil Dibuat! ID: ${res.spreadsheetId}`, 'success');
+        syncWithGAS();
+      } else {
+        showToast(`Gagal inisialisasi: ${res.message}`, 'error');
+      }
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, 'error');
+    } finally {
+      setIsTestingGas(false);
+    }
+  };
+
+  const handleCopyGasCode = () => {
+    navigator.clipboard.writeText(GAS_BACKEND_CODE);
+    setIsCopiedGasCode(true);
+    showToast('Script Code.gs berhasil disalin ke clipboard!', 'success');
+    setTimeout(() => setIsCopiedGasCode(false), 3000);
+  };
+
+  const handleEmbedGasConfig = () => {
+    const cleanGasUrl = (gasWebAppUrl || '').trim();
+    if (!cleanGasUrl || !cleanGasUrl.startsWith('http')) {
+      showToast('Masukkan Web App URL yang valid terlebih dahulu!', 'warning');
+      return;
+    }
+    saveAndEmbedGasConfig({ gasWebAppUrl: cleanGasUrl });
+    updateSettings({ gasWebAppUrl: cleanGasUrl });
+    showToast('BERHASIL! Konfigurasi GAS Web App telah tertanam permanen di Aplikasi!', 'success');
+  };
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const cleanGasUrl = (gasWebAppUrl || '').trim();
+    if (cleanGasUrl) {
+      saveAndEmbedGasConfig({ gasWebAppUrl: cleanGasUrl });
+    }
+
+    updateSettings({
+      namaUnitLayanan,
+      logoAplikasiUrl,
+      logoInstansiUrl,
+      loginBgUrl,
+      themeColor,
+      versiAplikasi,
+      gasWebAppUrl: cleanGasUrl,
+      kontakAdmin: {
+        whatsapp,
+        email,
+        alamat,
+      },
+    });
+    showToast('Pengaturan aplikasi & URL Spreadsheet GAS berhasil ditanamkan!', 'success');
+  };
+
+  return (
+    <div className="space-y-6 max-w-5xl mx-auto animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-1">
+        <div className="flex items-center space-x-3 text-teal-600 dark:text-teal-400">
+          <Settings className="w-6 h-6" />
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white font-display">
+            Setting & Konfigurasi Aplikasi (SuperAdmin)
+          </h1>
+        </div>
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+          Atur koneksi Google Spreadsheet & Google Drive, Nama Unit Layanan (UL), logo, background login, warna tema, dan kontak admin.
+        </p>
+      </div>
+
+      <form onSubmit={handleSave} className="space-y-6">
+        {/* GAS Backend Integration Section */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-teal-200 dark:border-teal-800 shadow-sm space-y-5">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+            <div className="flex items-center space-x-2 text-teal-600 font-bold">
+              <Database className="w-5 h-5 text-teal-600" />
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                1. Database Google Spreadsheet & Storage Google Drive (GAS REST API)
+              </h3>
+            </div>
+            <div className="flex items-center space-x-2">
+              {isGasConnected ? (
+                <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400 border border-teal-300 dark:border-teal-800">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>GAS Connected</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-300 dark:border-amber-800">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>Offline / Standalone</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* PostgreSQL Direct Migration Banner */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 border border-blue-500/30 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <Database className="w-5 h-5 text-blue-400" />
+                <h4 className="font-extrabold text-sm font-display text-blue-200">
+                  Migrasi & Setup Database PostgreSQL (Meysxysd_aphro)
+                </h4>
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-500/30 text-blue-300 rounded-md border border-blue-400/30">
+                  Cloud Small V2
+                </span>
+              </div>
+              <p className="text-xs text-slate-300">
+                Inisialisasi Schema PostgreSQL + Migrasi Data 7 Tahap dari Google Sheets ke Database Meysxysd_aphro (User: meysxysd_Aphro).
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPostgresModal(true)}
+              className="px-5 py-2.5 bg-blue-500 hover:bg-blue-400 text-slate-950 font-extrabold text-xs rounded-xl shadow-md transition-all shrink-0 flex items-center space-x-2"
+            >
+              <Database className="w-4 h-4 fill-current" />
+              <span>Buka Pusat Migrasi PostgreSQL</span>
+            </button>
+          </div>
+
+          {/* Featured Auto Spreadsheet Banner */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-teal-600 to-teal-600 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <Sparkles className="w-5 h-5 text-amber-300" />
+                <h4 className="font-extrabold text-sm font-display">
+                  Buat Otomatis Spreadsheet 'APHRO_DATABASE_ENTERPRISE'
+                </h4>
+              </div>
+              <p className="text-xs text-teal-100">
+                Otomatis membuat Spreadsheet baru + 11 Sheet (USERS, WORK_ORDER, REALISASI, dll) lengkap dengan format header & default user.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAutoWizard(true)}
+              className="px-5 py-2.5 bg-white text-teal-700 hover:bg-teal-50 font-extrabold text-xs rounded-xl shadow-sm transition-all shrink-0 flex items-center space-x-2"
+            >
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span>Buka Wizard Otomatis</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            {/* Database Folder Info */}
+            <div className="p-4 rounded-2xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-800/60 space-y-2">
+              <div className="flex items-center justify-between text-teal-900 dark:text-teal-200 font-bold">
+                <span className="flex items-center space-x-1.5">
+                  <FileSpreadsheet className="w-4 h-4 text-teal-600" />
+                  <span>Folder Database Spreadsheet</span>
+                </span>
+                <a
+                  href="https://drive.google.com/drive/folders/1boNO8nAA9j_xY3pJ0SLyuFB5w8J-F3xv?usp=drive_link"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center space-x-1 text-teal-600 hover:underline font-semibold"
+                >
+                  <span>Buka Drive</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Lokasi tempat menyimpan file Spreadsheet <code className="font-mono text-teal-700 dark:text-teal-300 font-bold">APHRO_DATABASE_ENTERPRISE</code> berisi 11 Sheet (USERS, WORK_ORDER, REALISASI, ULP, dll).
+              </p>
+            </div>
+
+            {/* Photo Storage Folder Info */}
+            <div className="p-4 rounded-2xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-800/60 space-y-2">
+              <div className="flex items-center justify-between text-[#008396] dark:text-teal-200 font-bold">
+                <span className="flex items-center space-x-1.5">
+                  <Folder className="w-4 h-4 text-[#00A2B9]" />
+                  <span>Folder Media Foto Google Drive</span>
+                </span>
+                <a
+                  href="https://drive.google.com/drive/folders/1idu8U3COKEqdcCewdWntu9X06ZMnzskr?usp=drive_link"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center space-x-1 text-[#00A2B9] hover:underline font-semibold"
+                >
+                  <span>Buka Drive</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Struktur hirarki otomatis: <code className="font-mono text-[#008396] dark:text-teal-300 font-bold">FOTO/Tahun/Bulan/WO_ID/</code> dengan format penamaan <code className="font-mono font-bold">WOID_JenisFoto_Timestamp.jpg</code>.
+              </p>
+            </div>
+
+            {/* FOTO_ABSENSI Folder Info */}
+            <div className="p-4 rounded-2xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200/80 dark:border-teal-800/60 space-y-2 md:col-span-2">
+              <div className="flex items-center justify-between text-teal-900 dark:text-teal-200 font-bold">
+                <span className="flex items-center space-x-1.5">
+                  <Folder className="w-4 h-4 text-teal-600" />
+                  <span>Folder FOTO_ABSENSI Google Drive</span>
+                </span>
+                <a
+                  href="https://drive.google.com/drive/folders/1zDU9fGaFan01Y9Dogtd0XhOPM1S1Vry5?usp=sharing"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center space-x-1 text-teal-600 hover:underline font-semibold"
+                >
+                  <span>Buka Drive</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Lokasi penyimpanan untuk Foto Masuk & Foto Keluar. File terpusat pada satu folder.
+              </p>
+            </div>
+          </div>
+
+          {/* GAS Web App URL Input */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+              URL Web App Google Apps Script (GAS REST API Endpoint)
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Link className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                <input
+                  type="url"
+                  required
+                  placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
+                  value={gasWebAppUrl}
+                  onChange={(e) => setGasWebAppUrl(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 text-xs font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleTestGas}
+                  disabled={isTestingGas}
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl transition-colors shadow-2xs whitespace-nowrap"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isTestingGas ? 'animate-spin' : ''}`} />
+                  <span>Tes Koneksi</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleInitDatabaseGAS}
+                  disabled={isTestingGas}
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 text-xs font-bold text-teal-700 dark:text-teal-300 bg-teal-100 hover:bg-teal-200 dark:bg-teal-900/60 dark:hover:bg-teal-800 rounded-xl transition-colors whitespace-nowrap"
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  <span>Inisialisasi 11 Sheet</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleEmbedGasConfig}
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 text-xs font-bold text-white bg-[#00A2B9] hover:bg-[#008396] rounded-xl transition-colors shadow-2xs whitespace-nowrap"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Tanamkan URL di Aplikasi</span>
+                </button>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              URL ini dihasilkan setelah Anda men-deploy Script Google Apps Script sebagai <span className="font-semibold text-slate-600 dark:text-slate-300">Web App (Execute as: Me, Who has access: Anyone)</span>.
+            </p>
+          </div>
+
+          {/* 11-Sheet Realtime Sync Monitor & Manual Sync Trigger */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center space-x-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                <FileSpreadsheet className="w-4 h-4 text-teal-600" />
+                <span>Sinkronisasi Data Google Spreadsheet (Mode Manual):</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                {pendingCount > 0 && (
+                  <span className="px-2.5 py-1 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-xs font-bold border border-amber-300 dark:border-amber-800">
+                    📂 {pendingCount} data antrean perangkat
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleManualSyncAll}
+                  disabled={isSyncing}
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 bg-gradient-to-r from-amber-500 via-[#00A2B9] to-[#008396] hover:from-amber-600 hover:to-[#006e7e] text-white rounded-xl text-xs font-black transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Menyinkronkan...' : pendingCount > 0 ? `Tombol Sync Data (${pendingCount})` : 'Tombol Sync Data'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-6 gap-2 text-xs">
+              {[
+                { name: 'USERS', label: 'Pengguna', count: users.length },
+                { name: 'WORK_ORDER', label: 'Work Order', count: workOrders.length },
+                { name: 'REALISASI', label: 'Realisasi', count: realisasiList.length },
+                { name: 'ABSENSI', label: 'Absensi', count: absensiList.length },
+                { name: 'ULP', label: 'Data ULP', count: ulpList.length },
+                { name: 'PENYULANG', label: 'Penyulang', count: penyulangList.length },
+                { name: 'REGU_ROW', label: 'Regu ROW', count: reguList.length },
+                { name: 'PETUGAS', label: 'Petugas', count: petugasList.length },
+                { name: 'SETTING', label: 'Setting App', count: 1 },
+                { name: 'LOG_ACTIVITY', label: 'Audit Logs', count: auditLogs.length },
+                { name: 'NOTIFICATION', label: 'Notifikasi', count: notifications.length },
+              ].map((sheet, idx) => (
+                <div key={`${sheet.name}-${idx}`} className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-extrabold text-[10px] text-teal-600 dark:text-teal-400">{sheet.name}</span>
+                    <span className={`w-2 h-2 rounded-full ${isGasConnected ? 'bg-[#00A2B9] animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 mt-1 truncate">{sheet.label}</span>
+                  <span className="text-xs font-black text-slate-900 dark:text-white mt-0.5">{sheet.count} data</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Action Bar for Script Code.gs */}
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center space-x-2 text-xs text-slate-600 dark:text-slate-300">
+              <Code2 className="w-4 h-4 text-teal-600" />
+              <span className="font-semibold">Script Google Apps Script (Code.gs) Siap Dideploy:</span>
+            </div>
+
+            <div className="flex space-x-2">
+              <button
+                type="button"
+                onClick={() => setShowGasScriptModal(true)}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-xl transition-colors"
+              >
+                <Code2 className="w-3.5 h-3.5 text-[#00A2B9]" />
+                <span>Lihat Script Code.gs</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopyGasCode}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-[#008396] hover:bg-[#00A2B9] rounded-xl transition-colors shadow-2xs"
+              >
+                {isCopiedGasCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{isCopiedGasCode ? 'Tersalin!' : 'Salin Script GAS'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Unit Name Section */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+          <div className="flex items-center space-x-2 text-teal-600 font-bold border-b border-slate-100 dark:border-slate-700 pb-3">
+            <Building className="w-5 h-5" />
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              2. Identitas Unit Layanan (UL)
+            </h3>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Nama Unit Layanan (Muncul di Header, Footer, PDF Report, Watermark)
+            </label>
+            <input
+              type="text"
+              required
+              value={namaUnitLayanan}
+              onChange={(e) => setNamaUnitLayanan(e.target.value)}
+              className="w-full px-4 py-3 text-sm font-extrabold rounded-2xl border border-teal-300 dark:border-teal-700 bg-teal-50/50 dark:bg-teal-950/30 text-teal-900 dark:text-teal-200 focus:outline-none focus:border-teal-600"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              Contoh: <span className="font-semibold text-slate-600">PLN UP3 Padang - ULP Kuranji</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Branding & Visual Theme */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+          <div className="flex items-center space-x-2 text-teal-600 font-bold border-b border-slate-100 dark:border-slate-700 pb-3">
+            <ImageIcon className="w-5 h-5" />
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              3. Branding Visual & Background Login
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                URL Logo Aplikasi
+              </label>
+              <input
+                type="text"
+                required
+                value={logoAplikasiUrl}
+                onChange={(e) => setLogoAplikasiUrl(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                URL Logo Instansi (PLN)
+              </label>
+              <input
+                type="text"
+                required
+                value={logoInstansiUrl}
+                onChange={(e) => setLogoInstansiUrl(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                URL Gambar Background Login Page
+              </label>
+              <input
+                type="text"
+                required
+                value={loginBgUrl}
+                onChange={(e) => setLoginBgUrl(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Aksen Warna Tema
+              </label>
+              <select
+                value={themeColor}
+                onChange={(e) => setThemeColor(e.target.value as any)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold"
+              >
+                <option value="PLN Blue">PLN Blue Enterprise (#00529C)</option>
+                <option value="Cyan">Cyan Electric (#00A3E0)</option>
+                <option value="Emerald">Emerald Field (#10B981)</option>
+                <option value="Royal Indigo">Royal Indigo (#6366F1)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Versi Aplikasi
+              </label>
+              <input
+                type="text"
+                required
+                value={versiAplikasi}
+                onChange={(e) => setVersiAplikasi(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Admin Contact Details */}
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+          <div className="flex items-center space-x-2 text-teal-600 font-bold border-b border-slate-100 dark:border-slate-700 pb-3">
+            <Phone className="w-5 h-5" />
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              4. Kontak Admin & Helpdesk Operations
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Nomor WhatsApp Hotline
+              </label>
+              <input
+                type="text"
+                required
+                value={whatsapp}
+                onChange={(e) => setWhatsapp(e.target.value)}
+                placeholder="6281234567890"
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Email Customer Support
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Alamat Kantor Utama
+              </label>
+              <input
+                type="text"
+                required
+                value={alamat}
+                onChange={(e) => setAlamat(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+              />
+            </div>
+
+          </div>
+        </div>
+
+        {/* Submit */}
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            className="inline-flex items-center space-x-2 px-8 py-3 text-sm font-extrabold text-white bg-teal-600 hover:bg-teal-700 rounded-2xl shadow-lg shadow-teal-600/30 transition-all"
+          >
+            <Save className="w-5 h-5" />
+            <span>Simpan Seluruh Pengaturan</span>
+          </button>
+        </div>
+      </form>
+
+      {/* Audit Log Section */}
+      <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+          <div className="flex items-center space-x-2 text-teal-600 font-bold">
+            <History className="w-5 h-5" />
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              System Audit Log & Riwayat Aktivitas
+            </h3>
+          </div>
+          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+            {auditLogs.length} Aktivitas
+          </span>
+        </div>
+
+        <div className="space-y-2 max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/50">
+          {auditLogs.map((log, idx) => (
+            <div key={`${log.id}-${idx}`} className="pt-2 text-xs flex justify-between items-start">
+              <div>
+                <p className="font-bold text-slate-800 dark:text-slate-200">
+                  [{log.action}] {log.details}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Oleh: {log.actorName} ({log.actorRole})
+                </p>
+              </div>
+              <span className="text-[10px] text-slate-400 whitespace-nowrap">{log.timestamp}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Wizard Modal */}
+      <AutoSpreadsheetWizardModal
+        isOpen={showAutoWizard}
+        onClose={() => setShowAutoWizard(false)}
+      />
+
+      {/* Code Modal */}
+      {showGasScriptModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs">
+          <div className="bg-slate-900 rounded-3xl max-w-4xl w-full p-6 border border-slate-700 space-y-4 flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 text-white">
+              <span className="text-sm font-bold flex items-center space-x-2 text-teal-400">
+                <Code2 className="w-5 h-5" />
+                <span>Script Code.gs - Google Apps Script (GAS) Backend REST API</span>
+              </span>
+              <button
+                onClick={() => setShowGasScriptModal(false)}
+                className="px-3 py-1 text-xs font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 rounded-lg cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+
+            {/* Warning banner regarding export keyword */}
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start space-x-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-extrabold text-amber-200">
+                  PERHATIAN PENTING - MENGHINDARI "SyntaxError: Unexpected token 'export'":
+                </p>
+                <p className="mt-0.5 text-[11px] text-amber-300/90 leading-normal">
+                  Google Apps Script (<strong>Code.gs</strong>) tidak mendukung kata <code>export</code>.
+                  Jangan menempelkan file TypeScript frontend (<code>gasBackendCode.ts</code>). Gunakan tombol <strong>"Salin Semua Kode"</strong> di bawah ini atau unduh file <strong>Code.gs</strong> murni.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto font-mono text-[11px] bg-slate-950 p-4 rounded-xl text-slate-300 leading-relaxed border border-slate-800">
+              <pre>{GAS_BACKEND_CODE}</pre>
+            </div>
+
+            <div className="flex flex-wrap justify-between items-center gap-3 pt-2 border-t border-slate-800 text-xs">
+              <span className="text-slate-400">
+                Langkah: Buka <a href="https://script.google.com" target="_blank" rel="noreferrer" className="text-teal-400 underline font-bold">script.google.com</a> &gt; Hapus isi default Code.gs &gt; Paste kode di atas &gt; Deploy as Web App.
+              </span>
+              <div className="flex items-center space-x-2">
+                <a
+                  href="/Code.gs"
+                  download="Code.gs"
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors border border-slate-700"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-teal-400" />
+                  <span>Unduh File Code.gs</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={handleCopyGasCode}
+                  className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-bold text-white bg-[#008396] hover:bg-[#00A2B9] rounded-xl transition-colors shadow-2xs cursor-pointer"
+                >
+                  {isCopiedGasCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>{isCopiedGasCode ? 'Tersalin!' : 'Salin Semua Kode'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Postgres Migration Modal */}
+      <PostgresMigrationModal
+        isOpen={showPostgresModal}
+        onClose={() => setShowPostgresModal(false)}
+      />
+    </div>
+  );
+};
